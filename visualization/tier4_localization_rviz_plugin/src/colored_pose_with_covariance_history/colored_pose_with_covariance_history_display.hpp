@@ -64,7 +64,6 @@ protected:
   void update(float wall_dt, float ros_dt) override;
 
 private Q_SLOTS:
-  void update_pose_topic();
   void update_value_type();
   void update_value_topic();
   void update_visualization();
@@ -92,11 +91,12 @@ private:  // NOLINT : suppress redundancy warnings
 
   std::deque<pose_with_value> history_;
   std::string target_frame_;
+  ValueType current_value_type_;
   std::unique_ptr<rviz_rendering::BillboardLine> lines_;
   rclcpp::Time last_stamp_;
   double last_value_;
 
-  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_sub_;
+  rclcpp::Node::SharedPtr node_;
   rclcpp::Subscription<autoware_internal_debug_msgs::msg::Int32Stamped>::SharedPtr int32_sub_;
   rclcpp::Subscription<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr float32_sub_;
   

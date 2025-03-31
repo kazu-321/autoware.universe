@@ -32,13 +32,16 @@ namespace rviz_plugins
 ColoredPoseWithCovarianceHistory::ColoredPoseWithCovarianceHistory() : last_stamp_(0, 0, RCL_ROS_TIME)
 {
   property_value_type_ = new rviz_common::properties::EnumProperty(
-    "Value Type", "Float32", "", this, SLOT(update_value_type()));
-  property_value_type_->addOption("Int32"  , static_cast<int>(ValueType::Int32));
+    "Value Type", "Float32", "Select the type of value to visualize", this, SLOT(update_value_type()));
+  property_value_type_->addOption("Int32", static_cast<int>(ValueType::Int32));
   property_value_type_->addOption("Float32", static_cast<int>(ValueType::Float32));
+
+  // Add logging to confirm initialization
+  RCLCPP_INFO(rclcpp::get_logger("ColoredPoseWithCovarianceHistory"), "Initialized property_value_type_");
 
   property_value_topic_ = new rviz_common::properties::RosTopicProperty(
     "Value Topic", "", rosidl_generator_traits::name<autoware_internal_debug_msgs::msg::Float32Stamped>(),
-    "", property_value_type_, SLOT(update_value_topic()));
+    "", this, SLOT(update_value_topic())); 
   
   property_buffer_size_ = new rviz_common::properties::IntProperty("Buffer Size", 100, "", this);
   property_buffer_size_->setMin(0);
@@ -71,12 +74,28 @@ ColoredPoseWithCovarianceHistory::ColoredPoseWithCovarianceHistory() : last_stam
 
 }
 
-ColoredPoseWithCovarianceHistory::~ColoredPoseWithCovarianceHistory() = default;  // Properties are deleted by Qt
+ColoredPoseWithCovarianceHistory::~ColoredPoseWithCovarianceHistory()
+{
+  // Ensure proper cleanup of properties
+  delete property_value_type_;
+  RCLCPP_INFO(rclcpp::get_logger("ColoredPoseWithCovarianceHistory"), "Cleaned up property_value_type_");
+}
 
 void ColoredPoseWithCovarianceHistory::onInitialize()
 {
   MFDClass::onInitialize();
   lines_ = std::make_unique<rviz_rendering::BillboardLine>(scene_manager_, scene_node_);
+  auto node_abstraction = context_->getRosNodeAbstraction().lock();
+  if(!node_abstraction) {
+    return;
+  }
+
+  node_ = node_abstraction->get_raw_node();
+  if (!node_) {
+    return;
+  }
+
+  property_value_topic_->initialize(node_abstraction);
 }
 
 void ColoredPoseWithCovarianceHistory::onEnable()
@@ -96,6 +115,94 @@ void ColoredPoseWithCovarianceHistory::update(float wall_dt, float ros_dt)
 
   if (!history_.empty()) {
     lines_->clear();
+  }
+}
+
+void ColoredPoseWithCovarianceHistory::update_value_type()
+{
+
+  current_value_type_ = static_cast<ValueType>(property_value_type_->getOptionInt());
+
+  if (current_value_type_ == ValueType::Int32) {
+    property_value_topic_->setMessageType(
+      rosidl_generator_traits::name<autoware_internal_debug_msgs::msg::Int32Stamped>());
+  } else {
+    property_value_topic_->setMessageType(
+      rosidl_generator_traits::name<autoware_internal_debug_msgs::msg::Float32Stamped>());
+  }
+
+  update_value_topic();
+}
+
+void ColoredPoseWithCovarianceHistory::update_value_topic()
+{
+  lines_->clear();
+  int32_sub_.reset();
+  float32_sub_.reset();
+  RCLCPP_INFO(node_->get_logger(), "update_value_topic");
+  if(property_value_topic_->getStdString().empty()) {
+    setStatus(rviz_common::properties::StatusProperty::Error, "Value Topic", "No topic was set.");
+    return;
+  }
+  if(current_value_type_ == ValueType::Int32) {
+    int32_sub_ = node_->create_subscription<autoware_internal_debug_msgs::msg::Int32Stamped>(
+      property_value_topic_->getStdString(), rclcpp::QoS(10),
+      std::bind(&ColoredPoseWithCovarianceHistory::process_int32_message, this, std::placeholders::_1));
+  } else {
+    float32_sub_ = node_->create_subscription<autoware_internal_debug_msgs::msg::Float32Stamped>(
+      property_value_topic_->getStdString(), rclcpp::QoS(10),
+      std::bind(&ColoredPoseWithCovarianceHistory::process_float32_message, this, std::placeholders::_1));
+  }
+  setStatus(rviz_common::properties::StatusProperty::Ok, "Value Topic", "OK");
+  update_visualization();
+}
+
+void ColoredPoseWithCovarianceHistory::update_visualization()
+{
+  RCLCPP_INFO(node_->get_logger(), "update_visualization");
+  if (history_.empty()) {
+    setStatus(
+      rviz_common::properties::StatusProperty::Error, "Topic",
+      "No messages received yet");
+    return;
+  }
+  if (property_auto_min_max_->getBool()) {
+    double min_value = std::numeric_limits<double>::max();
+    double max_value = std::numeric_limits<double>::min();
+    for (const auto & pose_with_value : history_) {
+      if (pose_with_value.value < min_value) {
+        min_value = pose_with_value.value;
+      }
+      if (pose_with_value.value > max_value) {
+        max_value = pose_with_value.value;
+      }
+    }
+    property_min_value_->setFloat(min_value);
+    property_max_value_->setFloat(max_value);
+  }
+
+  Ogre::Vector3 position;
+  Ogre::Quaternion orientation;
+  auto frame_manager = context_->getFrameManager();
+  if (!frame_manager->getTransform(target_frame_, last_stamp_, position, orientation)) {
+    setMissingTransformToFixedFrame(target_frame_);
+    return;
+  }
+
+  setTransformOk();
+  lines_->clear();
+  lines_->setMaxPointsPerLine(history_.size());
+  lines_->setLineWidth(property_line_width_->getFloat());
+  lines_->setPosition(position);
+  lines_->setOrientation(orientation);
+  
+  for (const auto & pose_with_value : history_) {
+    const auto color = get_color_from_value(pose_with_value.value);
+    Ogre::Vector3 point;
+    point.x = static_cast<float>(pose_with_value.pose->pose.pose.position.x);
+    point.y = static_cast<float>(pose_with_value.pose->pose.pose.position.y);
+    point.z = static_cast<float>(pose_with_value.pose->pose.pose.position.z);
+    lines_->addPoint(point, color);
   }
 }
 
@@ -129,6 +236,7 @@ void ColoredPoseWithCovarianceHistory::processMessage(
   history_.emplace_back(message, last_value_);
   last_stamp_ = message->header.stamp;
   update_history();
+  update_visualization();
 }
 
 void ColoredPoseWithCovarianceHistory::process_int32_message(
@@ -151,6 +259,16 @@ void ColoredPoseWithCovarianceHistory::update_history()
   }
 }
 
+Ogre::ColourValue ColoredPoseWithCovarianceHistory::get_color_from_value(double value)
+{
+  const auto min_value = property_min_value_->getFloat();
+  const auto max_value = property_max_value_->getFloat();
+  const auto ratio = (value - min_value) / (max_value - min_value);
+  const auto min_color = property_line_min_color_->getOgreColor();
+  const auto max_color = property_line_max_color_->getOgreColor();
+  const auto color = min_color * (1.0 - ratio) + max_color * ratio;
+  return color;
+}
 
 }  // namespace rviz_plugins
 
