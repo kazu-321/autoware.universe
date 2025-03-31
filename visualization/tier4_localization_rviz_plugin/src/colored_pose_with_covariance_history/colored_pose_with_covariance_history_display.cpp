@@ -38,10 +38,6 @@ ColoredPoseWithCovarianceHistory::ColoredPoseWithCovarianceHistory()
   property_value_type_->addOption("Int32", static_cast<int>(ValueType::Int32));
   property_value_type_->addOption("Float32", static_cast<int>(ValueType::Float32));
 
-  // Add logging to confirm initialization
-  RCLCPP_INFO(
-    rclcpp::get_logger("ColoredPoseWithCovarianceHistory"), "Initialized property_value_type_");
-
   property_value_topic_ = new rviz_common::properties::RosTopicProperty(
     "Value Topic", "",
     rosidl_generator_traits::name<autoware_internal_debug_msgs::msg::Float32Stamped>(), "", this,
@@ -80,10 +76,7 @@ ColoredPoseWithCovarianceHistory::ColoredPoseWithCovarianceHistory()
 
 ColoredPoseWithCovarianceHistory::~ColoredPoseWithCovarianceHistory()
 {
-  // Ensure proper cleanup of properties
   delete property_value_type_;
-  RCLCPP_INFO(
-    rclcpp::get_logger("ColoredPoseWithCovarianceHistory"), "Cleaned up property_value_type_");
 }
 
 void ColoredPoseWithCovarianceHistory::onInitialize()
@@ -120,6 +113,9 @@ void ColoredPoseWithCovarianceHistory::update(float wall_dt, float ros_dt)
 
   if (!history_.empty()) {
     lines_->clear();
+    if (property_line_view_->getBool()) {
+      update_visualization();
+    }
   }
 }
 
@@ -143,7 +139,6 @@ void ColoredPoseWithCovarianceHistory::update_value_topic()
   lines_->clear();
   int32_sub_.reset();
   float32_sub_.reset();
-  RCLCPP_INFO(node_->get_logger(), "update_value_topic");
   if (property_value_topic_->getStdString().empty()) {
     setStatus(rviz_common::properties::StatusProperty::Error, "Value Topic", "No topic was set.");
     return;
@@ -160,12 +155,10 @@ void ColoredPoseWithCovarianceHistory::update_value_topic()
         &ColoredPoseWithCovarianceHistory::process_float32_message, this, std::placeholders::_1));
   }
   setStatus(rviz_common::properties::StatusProperty::Ok, "Value Topic", "OK");
-  update_visualization();
 }
 
 void ColoredPoseWithCovarianceHistory::update_visualization()
 {
-  RCLCPP_INFO(node_->get_logger(), "update_visualization");
   if (history_.empty()) {
     setStatus(rviz_common::properties::StatusProperty::Error, "Topic", "No messages received yet");
     return;
@@ -194,6 +187,7 @@ void ColoredPoseWithCovarianceHistory::update_visualization()
   }
 
   setTransformOk();
+
   lines_->clear();
   lines_->setMaxPointsPerLine(history_.size());
   lines_->setLineWidth(property_line_width_->getFloat());

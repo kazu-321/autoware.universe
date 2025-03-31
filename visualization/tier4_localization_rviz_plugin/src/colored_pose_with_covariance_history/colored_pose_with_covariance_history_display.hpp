@@ -25,6 +25,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <limits>
 
 namespace rviz_rendering
 {
