@@ -25,6 +25,7 @@
 
 #include <tf2/LinearMath/Quaternion.h>
 
+#include <limits>
 #include <memory>
 
 namespace rviz_plugins
