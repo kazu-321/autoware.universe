@@ -29,20 +29,24 @@
 
 namespace rviz_plugins
 {
-ColoredPoseWithCovarianceHistory::ColoredPoseWithCovarianceHistory() : last_stamp_(0, 0, RCL_ROS_TIME)
+ColoredPoseWithCovarianceHistory::ColoredPoseWithCovarianceHistory()
+: last_stamp_(0, 0, RCL_ROS_TIME)
 {
   property_value_type_ = new rviz_common::properties::EnumProperty(
-    "Value Type", "Float32", "Select the type of value to visualize", this, SLOT(update_value_type()));
+    "Value Type", "Float32", "Select the type of value to visualize", this,
+    SLOT(update_value_type()));
   property_value_type_->addOption("Int32", static_cast<int>(ValueType::Int32));
   property_value_type_->addOption("Float32", static_cast<int>(ValueType::Float32));
 
   // Add logging to confirm initialization
-  RCLCPP_INFO(rclcpp::get_logger("ColoredPoseWithCovarianceHistory"), "Initialized property_value_type_");
+  RCLCPP_INFO(
+    rclcpp::get_logger("ColoredPoseWithCovarianceHistory"), "Initialized property_value_type_");
 
   property_value_topic_ = new rviz_common::properties::RosTopicProperty(
-    "Value Topic", "", rosidl_generator_traits::name<autoware_internal_debug_msgs::msg::Float32Stamped>(),
-    "", this, SLOT(update_value_topic())); 
-  
+    "Value Topic", "",
+    rosidl_generator_traits::name<autoware_internal_debug_msgs::msg::Float32Stamped>(), "", this,
+    SLOT(update_value_topic()));
+
   property_buffer_size_ = new rviz_common::properties::IntProperty("Buffer Size", 100, "", this);
   property_buffer_size_->setMin(0);
   property_buffer_size_->setMax(100000);
@@ -58,27 +62,28 @@ ColoredPoseWithCovarianceHistory::ColoredPoseWithCovarianceHistory() : last_stam
   property_line_alpha_->setMin(0.0);
   property_line_alpha_->setMax(1.0);
 
-  property_line_min_color_ = 
+  property_line_min_color_ =
     new rviz_common::properties::ColorProperty("Min Color", Qt::blue, "", property_line_view_);
 
-  property_line_max_color_ = 
+  property_line_max_color_ =
     new rviz_common::properties::ColorProperty("Max Color", Qt::red, "", property_line_view_);
-  
-  property_auto_min_max_ = new rviz_common::properties::BoolProperty("Auto Set Min/Max", true, "", this);
 
-  property_min_value_ = 
+  property_auto_min_max_ =
+    new rviz_common::properties::BoolProperty("Auto Set Min/Max", true, "", this);
+
+  property_min_value_ =
     new rviz_common::properties::FloatProperty("Min Value", 0.0, "", property_auto_min_max_);
 
-  property_max_value_ = 
+  property_max_value_ =
     new rviz_common::properties::FloatProperty("Max Value", 1.0, "", property_auto_min_max_);
-
 }
 
 ColoredPoseWithCovarianceHistory::~ColoredPoseWithCovarianceHistory()
 {
   // Ensure proper cleanup of properties
   delete property_value_type_;
-  RCLCPP_INFO(rclcpp::get_logger("ColoredPoseWithCovarianceHistory"), "Cleaned up property_value_type_");
+  RCLCPP_INFO(
+    rclcpp::get_logger("ColoredPoseWithCovarianceHistory"), "Cleaned up property_value_type_");
 }
 
 void ColoredPoseWithCovarianceHistory::onInitialize()
@@ -86,7 +91,7 @@ void ColoredPoseWithCovarianceHistory::onInitialize()
   MFDClass::onInitialize();
   lines_ = std::make_unique<rviz_rendering::BillboardLine>(scene_manager_, scene_node_);
   auto node_abstraction = context_->getRosNodeAbstraction().lock();
-  if(!node_abstraction) {
+  if (!node_abstraction) {
     return;
   }
 
@@ -120,7 +125,6 @@ void ColoredPoseWithCovarianceHistory::update(float wall_dt, float ros_dt)
 
 void ColoredPoseWithCovarianceHistory::update_value_type()
 {
-
   current_value_type_ = static_cast<ValueType>(property_value_type_->getOptionInt());
 
   if (current_value_type_ == ValueType::Int32) {
@@ -140,18 +144,20 @@ void ColoredPoseWithCovarianceHistory::update_value_topic()
   int32_sub_.reset();
   float32_sub_.reset();
   RCLCPP_INFO(node_->get_logger(), "update_value_topic");
-  if(property_value_topic_->getStdString().empty()) {
+  if (property_value_topic_->getStdString().empty()) {
     setStatus(rviz_common::properties::StatusProperty::Error, "Value Topic", "No topic was set.");
     return;
   }
-  if(current_value_type_ == ValueType::Int32) {
+  if (current_value_type_ == ValueType::Int32) {
     int32_sub_ = node_->create_subscription<autoware_internal_debug_msgs::msg::Int32Stamped>(
       property_value_topic_->getStdString(), rclcpp::QoS(10),
-      std::bind(&ColoredPoseWithCovarianceHistory::process_int32_message, this, std::placeholders::_1));
+      std::bind(
+        &ColoredPoseWithCovarianceHistory::process_int32_message, this, std::placeholders::_1));
   } else {
     float32_sub_ = node_->create_subscription<autoware_internal_debug_msgs::msg::Float32Stamped>(
       property_value_topic_->getStdString(), rclcpp::QoS(10),
-      std::bind(&ColoredPoseWithCovarianceHistory::process_float32_message, this, std::placeholders::_1));
+      std::bind(
+        &ColoredPoseWithCovarianceHistory::process_float32_message, this, std::placeholders::_1));
   }
   setStatus(rviz_common::properties::StatusProperty::Ok, "Value Topic", "OK");
   update_visualization();
@@ -161,9 +167,7 @@ void ColoredPoseWithCovarianceHistory::update_visualization()
 {
   RCLCPP_INFO(node_->get_logger(), "update_visualization");
   if (history_.empty()) {
-    setStatus(
-      rviz_common::properties::StatusProperty::Error, "Topic",
-      "No messages received yet");
+    setStatus(rviz_common::properties::StatusProperty::Error, "Topic", "No messages received yet");
     return;
   }
   if (property_auto_min_max_->getBool()) {
@@ -195,7 +199,7 @@ void ColoredPoseWithCovarianceHistory::update_visualization()
   lines_->setLineWidth(property_line_width_->getFloat());
   lines_->setPosition(position);
   lines_->setOrientation(orientation);
-  
+
   for (const auto & pose_with_value : history_) {
     const auto color = get_color_from_value(pose_with_value.value);
     Ogre::Vector3 point;
