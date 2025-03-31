@@ -207,12 +207,19 @@ void ColoredPoseWithCovarianceHistory::update_visualization()
 
 void ColoredPoseWithCovarianceHistory::subscribe()
 {
+  history_.clear();
+  lines_->clear();
+
   MFDClass::subscribe();
+  update_value_topic();
 }
 
 void ColoredPoseWithCovarianceHistory::unsubscribe()
 {
   MFDClass::unsubscribe();
+  int32_sub_.reset();
+  float32_sub_.reset();
+
   history_.clear();
   lines_->clear();
 }
